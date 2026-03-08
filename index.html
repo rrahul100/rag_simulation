@@ -3,153 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Interactive Simulator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>RAG Logic Simulator</title>
     <style>
-        .step-card { transition: all 0.3s ease; border-left: 4px solid transparent; }
-        .step-active { border-left-color: #3b82f6; background-color: #eff6ff; transform: translateX(10px); }
-        .dot-pulse { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        :root {
+            --primary: #6366f1;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --accent: #22c55e;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        h3 { margin-top: 0; color: var(--primary); font-size: 1.1rem; }
+
+        textarea, input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.9; }
+
+        .vector-db {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+        }
+
+        .chunk-item {
+            padding: 8px;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .vector-tag {
+            background: #e0e7ff;
+            color: var(--primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .log-box {
+            background: #1e293b;
+            color: #38bdf8;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+
+        .highlight { color: var(--accent); font-weight: bold; }
     </style>
 </head>
-<body class="bg-slate-50 font-sans text-slate-900">
+<body>
 
-    <div class="max-w-6xl mx-auto p-6">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-slate-800">RAG <span class="text-blue-600">Simulator</span></h1>
-            <p class="text-slate-500">Understand the journey from Query to Augmented Response.</p>
-        </header>
+<div class="container">
+    <header>
+        <h1>RAG Simulator</h1>
+        <p>Step through the process of Retrieval Augmented Generation</p>
+    </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid">
+        <div class="card">
+            <h3>Step 1: Ingestion (The Database)</h3>
+            <p style="font-size: 0.8rem; color: #64748b;">Paste your "Knowledge Base" here. It will be chunked and embedded.</p>
+            <textarea id="knowledgeInput" rows="5">The secret password for the vault is 'GALAXY-99'. 
+The office coffee machine is broken on Tuesdays. 
+Gemini is an AI assistant developed by Google.</textarea>
+            <button onclick="processIngestion()">Chunk & Embed Data</button>
             
-            <!-- Left: Knowledge Base -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h2 class="text-xl font-semibold mb-4 flex items-center">
-                    <span class="bg-blue-100 text-blue-600 p-2 rounded-lg mr-2">1</span>
-                    Vector Database
-                </h2>
-                <textarea id="kbInput" class="w-full h-40 p-3 border rounded-lg text-sm mb-4" placeholder="Enter chunks of text (one per line)...">
-The capital of France is Paris.
-The Eiffel Tower was built in 1889.
-The Louvre is the world's largest art museum.
-The population of Paris is over 2 million.</textarea>
-                <button onclick="updateDB()" class="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-700 transition">Update Knowledge Base</button>
-                <div id="dbStatus" class="mt-4 text-xs text-slate-400 italic">4 chunks currently indexed.</div>
-            </div>
-
-            <!-- Middle: The Logic Engine -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h2 class="text-xl font-semibold mb-4">The Pipeline</h2>
-                <div class="space-y-4">
-                    <div id="step-query" class="step-card p-3 rounded-lg border border-slate-100">
-                        <p class="font-bold text-sm">1. Query Transformation</p>
-                        <p class="text-xs text-slate-500" id="query-desc">Waiting for input...</p>
-                    </div>
-                    <div id="step-retrieval" class="step-card p-3 rounded-lg border border-slate-100">
-                        <p class="font-bold text-sm">2. Retrieval (Similarity Search)</p>
-                        <p class="text-xs text-slate-500" id="retrieval-desc">Searching vector space...</p>
-                    </div>
-                    <div id="step-augmentation" class="step-card p-3 rounded-lg border border-slate-100">
-                        <p class="font-bold text-sm">3. Augmentation</p>
-                        <p class="text-xs text-slate-500" id="aug-desc">Merging context + query...</p>
-                    </div>
-                    <div id="step-generation" class="step-card p-3 rounded-lg border border-slate-100">
-                        <p class="font-bold text-sm">4. LLM Generation</p>
-                        <p class="text-xs text-slate-500" id="gen-desc">Synthesizing final answer...</p>
-                    </div>
+            <div class="vector-db" id="vectorDbDisplay">
                 </div>
-            </div>
-
-            <!-- Right: Chat Interface -->
-            <div class="flex flex-col bg-slate-900 rounded-xl shadow-xl text-white h-[500px]">
-                <div id="chatWindow" class="flex-grow p-4 overflow-y-auto space-y-4 text-sm">
-                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
-                        Ask me something about the data you entered on the left!
-                    </div>
-                </div>
-                <div class="p-4 border-t border-slate-800">
-                    <div class="flex gap-2">
-                        <input id="userInput" type="text" class="flex-grow bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. When was the Eiffel Tower built?">
-                        <button onclick="runRAG()" class="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500 font-medium">Ask</button>
-                    </div>
-                </div>
-            </div>
-
         </div>
 
-        <!-- System Prompt Preview (Hidden by default, shown during augmentation) -->
-        <div id="promptPreview" class="mt-8 bg-amber-50 border border-amber-200 p-4 rounded-xl hidden">
-            <h3 class="text-amber-800 font-bold text-sm mb-2 italic underline">Final Prompt Sent to LLM:</h3>
-            <pre id="fullPrompt" class="text-xs text-amber-900 whitespace-pre-wrap"></pre>
+        <div class="card">
+            <h3>Step 2: Ask & Retrieve</h3>
+            <p style="font-size: 0.8rem; color: #64748b;">Ask a question about the data.</p>
+            <input type="text" id="userQuery" placeholder="e.g. What is the password?">
+            <button onclick="runRAG()" style="background: var(--accent);">Run RAG Pipeline</button>
+
+            <div id="retrievalResult" style="margin-top:15px; display:none;">
+                <p><strong>Top Matches Found:</strong></p>
+                <div id="matchList" style="font-size: 0.9rem;"></div>
+            </div>
         </div>
     </div>
 
-    <script>
-        let vectorDB = [];
+    <div class="card" style="margin-top: 20px;">
+        <h3>Step 3: The Augmented Prompt & LLM Output</h3>
+        <div class="log-box" id="outputLog">
+            Waiting for input...
+        </div>
+    </div>
+</div>
 
-        function updateDB() {
-            const text = document.getElementById('kbInput').value;
-            vectorDB = text.split('\n').filter(line => line.trim() !== "");
-            document.getElementById('dbStatus').innerText = `${vectorDB.length} chunks currently indexed.`;
-            alert("Knowledge Base Updated!");
-        }
+<script>
+    let vectorStore = [];
 
-        async function runRAG() {
-            const query = document.getElementById('userInput').value;
-            if (!query) return;
+    // Simple "Embedding" simulator: counts character frequency to create a pseudo-vector
+    function mockEmbed(text) {
+        return [text.length, text.split(' ').length, text.charCodeAt(0) % 10];
+    }
 
-            // Reset UI
-            document.querySelectorAll('.step-card').forEach(el => el.classList.remove('step-active'));
-            const chat = document.getElementById('chatWindow');
-            chat.innerHTML += `<div class="text-right"><span class="bg-blue-600 p-2 rounded-lg inline-block">${query}</span></div>`;
-            document.getElementById('userInput').value = '';
+    function processIngestion() {
+        const text = document.getElementById('knowledgeInput').value;
+        const chunks = text.split('\n').filter(t => t.trim() !== "");
+        vectorStore = chunks.map(chunk => ({
+            text: chunk,
+            vector: mockEmbed(chunk)
+        }));
 
-            // 1. Step: Query (Encoding Mock)
-            setActive('step-query');
-            document.getElementById('query-desc').innerText = `Vectorizing: [${query.substring(0,20)}...]`;
-            await sleep(800);
+        renderDB();
+        alert("Data Chunked and stored in Vector Database!");
+    }
 
-            // 2. Step: Retrieval (Simple Keyword Similarity Mock)
-            setActive('step-retrieval');
-            const retrieved = vectorDB.filter(chunk => 
-                query.toLowerCase().split(' ').some(word => chunk.toLowerCase().includes(word))
-            ).slice(0, 2);
-            
-            const context = retrieved.length > 0 ? retrieved.join(' ') : "No relevant context found.";
-            document.getElementById('retrieval-desc').innerText = `Found ${retrieved.length} relevant chunks.`;
-            await sleep(800);
+    function renderDB() {
+        const container = document.getElementById('vectorDbDisplay');
+        container.innerHTML = '<strong>Vector DB:</strong>';
+        vectorStore.forEach(item => {
+            container.innerHTML += `
+                <div class="chunk-item">
+                    <span>${item.text.substring(0, 30)}...</span>
+                    <span class="vector-tag">[${item.vector.join(',')}]</span>
+                </div>
+            `;
+        });
+    }
 
-            // 3. Step: Augmentation
-            setActive('step-augmentation');
-            const systemPrompt = `Context: ${context}\n\nQuestion: ${query}\n\nAnswer based ONLY on the context:`;
-            document.getElementById('aug-desc').innerText = "Context injected into system prompt.";
-            document.getElementById('promptPreview').classList.remove('hidden');
-            document.getElementById('fullPrompt').innerText = systemPrompt;
-            await sleep(800);
+    function runRAG() {
+        const query = document.getElementById('userQuery').value;
+        if (!query || vectorStore.length === 0) return alert("Add data and a query first!");
 
-            // 4. Step: Generation
-            setActive('step-generation');
-            document.getElementById('gen-desc').innerText = "LLM is thinking...";
-            await sleep(1000);
+        const queryVec = mockEmbed(query);
+        
+        // Simulating "Similarity Search"
+        // In a real RAG, we'd use Cosine Similarity. Here we just find the closest string match for simplicity.
+        const matches = vectorStore.filter(item => 
+            query.toLowerCase().split(' ').some(word => item.text.toLowerCase().includes(word))
+        );
 
-            const response = retrieved.length > 0 
-                ? `Based on the records, ${retrieved[0]}` 
-                : "I'm sorry, I don't have that information in my knowledge base.";
-            
-            chat.innerHTML += `<div class="text-left"><span class="bg-slate-800 p-2 rounded-lg border border-slate-700 inline-block">${response}</span></div>`;
-            chat.scrollTop = chat.scrollHeight;
-            document.getElementById('gen-desc').innerText = "Response complete.";
-        }
+        const context = matches.map(m => m.text).join(" ");
 
-        function setActive(id) {
-            document.querySelectorAll('.step-card').forEach(el => el.classList.remove('step-active'));
-            document.getElementById(id).classList.add('step-active');
-        }
+        // UI Updates
+        document.getElementById('retrievalResult').style.display = 'block';
+        document.getElementById('matchList').innerHTML = matches.map(m => `<li>${m.text}</li>`).join('') || "No close matches found.";
 
-        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+        // The "Magic" - The Augmented Prompt
+        const finalPrompt = `SYSTEM: You are a helpful assistant. Use the following context to answer.\n\nCONTEXT: ${context}\n\nUSER QUESTION: ${query}`;
+        
+        document.getElementById('outputLog').innerHTML = 
+            `<span style="color: #94a3b8;">// 1. Prompt Embedded: [${queryVec}]</span>\n` +
+            `<span style="color: #94a3b8;">// 2. Retrieving chunks... Found ${matches.length} matches.</span>\n\n` +
+            `<span style="color: #fbbf24;">[AUGMENTED PROMPT SENT TO LLM]:</span>\n${finalPrompt}\n\n` +
+            `<span class="highlight">[LLM RESPONSE]:</span> Based on the provided context, ${context ? 'I can confirm: ' + context : 'I don\'t have that information in my database.'}`;
+    }
+</script>
 
-        // Initial Load
-        updateDB();
-    </script>
 </body>
 </html>
